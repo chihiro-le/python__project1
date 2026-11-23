@@ -1,8 +1,4 @@
-"""Student implementation of the final project's image encoder.
-
-Complete TODO-01 through TODO-06 using NumPy. Model parameters are supplied.
-The public classes retain the final project's interface. helpers.py is provided.
-"""
+"""Forward pass for the course's OpenCLIP image encoder using NumPy."""
 import numpy as np
 from helpers import LayerNorm, GELU, attention_weights, causal_mask, unit_vector
 
@@ -106,12 +102,8 @@ class ImageEncoder:
         return x
 
     def __call__(self, images):
-        """TODO-06. Return one normalized output token [B,512] per image."""
+        """Return one normalized output vector of shape [B,512] per image."""
         tokens = self.encode_tokens(images)
-
-        # Select CLS, apply post_norm, and project with self.projection.
-        # [B,50,768] -> [B,768] -> [B,512]. visual.proj is already [in,out].
-        # Name the projected array output. The final unit-vector helper is given.
-        raise NotImplementedError('TODO-06: CLS selection, post-Norm and projection')
-
+        cls = self.post_norm(tokens[:, 0, :])
+        output = cls @ self.projection  # Already stored as [in,out].
         return unit_vector(output)
