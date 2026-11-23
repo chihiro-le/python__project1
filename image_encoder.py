@@ -18,14 +18,10 @@ class MultiHeadAttention:
         self.head_dim = self.width // heads
 
     def split_heads(self, x):
-        """TODO-02. Input [B,N,D], return [B,H,N,D/H].
-
-        In this image model D=768, H=12 and D/H=64. Use reshape/transpose.
-        Research the head organization independently. Preserve token order.
-        """
-        # TODO-02 contract: [B,N,D] to [B,H,N,D/H].
-        # Image model: D=768, H=12, D/H=64.
-        raise NotImplementedError('TODO-02: split the feature axis into heads')
+        """Split [B,N,D] into [B,H,N,D/H], preserving token order."""
+        batch_size, token_count, _ = x.shape
+        heads = x.reshape(batch_size, token_count, self.heads, self.head_dim)
+        return heads.transpose(0, 2, 1, 3)
 
     def __call__(self, x, causal=False):
         # Given: stored linear weights use [out,in]. Parameters stay fixed.
@@ -34,22 +30,18 @@ class MultiHeadAttention:
         k = self.split_heads(qkv[:, :, self.width:2*self.width])
         v = self.split_heads(qkv[:, :, 2*self.width:])
 
-        # TODO-03a: query/key comparisons, scaled by sqrt(head_dim).
-        # q,k,v: [B,H,N,64]. scores must have [B,H,N,N].
-        raise NotImplementedError('TODO-03a: calculate scores from q and k')
+        # Swap the token and feature axes of each key matrix.
+        scale = np.float32(self.head_dim ** -0.5)
+        scores = (q @ k.swapaxes(-1, -2)) * scale
 
         # Given for later text-encoder compatibility. Images use causal=False.
         if causal:
             scores = causal_mask(scores)
         coefficients = attention_weights(scores)  # supplied numerical helper
 
-        # TODO-03b: mix value rows using coefficients; then join head outputs.
-        # context: [B,H,N,64], merged: [B,N,D].
-        raise NotImplementedError('TODO-03b: weighted values and merged heads')
-
-        # TODO-03c: output projection, using out_weight and out_bias.
-        # Return [B,N,D]. Remember the stored linear-weight orientation.
-        raise NotImplementedError('TODO-03c: project merged attention outputs')
+        context = coefficients @ v  # [B,H,N,D/H]
+        merged = context.transpose(0, 2, 1, 3).reshape(x.shape)
+        return merged @ self.out_weight.T + self.out_bias
 
 
 class TransformerBlock:
@@ -67,16 +59,12 @@ class TransformerBlock:
         # Given: normalize each token and calculate its attention update.
         update = self.attention(self.norm1(x), causal=causal)
 
-        # TODO-04a: first residual addition. Name the result residual.
-        raise NotImplementedError('TODO-04a: add the attention update to x')
+        residual = x + update
 
-        # Given: the second Norm and the exact checkpoint activation helper.
         u = self.norm2(residual)
-
-        # TODO-04b: MLP = GELU(u @ W1.T + b1) @ W2.T + b2.
-        # hidden: [B,N,3072], mlp_update: [B,N,768] for the image tower.
-        # Return residual + mlp_update. Both residual paths retain [B,N,D].
-        raise NotImplementedError('TODO-04b: MLP and the second residual')
+        hidden = self.gelu(u @ self.fc1_weight.T + self.fc1_bias)
+        mlp_update = hidden @ self.fc2_weight.T + self.fc2_bias
+        return residual + mlp_update
 
 
 class ImageEncoder:
